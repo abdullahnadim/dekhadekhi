@@ -1,0 +1,720 @@
+// CineHub BD — Prisma Schema
+// Production-ready, normalized PostgreSQL schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────
+
+enum UserRole {
+  GUEST
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum SeatType {
+  STANDARD
+  PREMIUM
+  VIP
+  COUPLE
+  ACCESSIBLE
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentGateway {
+  SSLCOMMERZ
+  BKASH
+  NAGAD
+  ROCKET
+  VISA
+  MASTERCARD
+  APPLE_PAY
+  GOOGLE_PAY
+}
+
+enum MovieStatus {
+  UPCOMING
+  NOW_SHOWING
+  ENDED
+  CANCELLED
+}
+
+enum ScheduleStatus {
+  AVAILABLE
+  SOLD_OUT
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  REMINDER
+  PROMO
+  SYSTEM
+  REVIEW_REQUEST
+  REWARD_EARNED
+}
+
+enum SeatLockStatus {
+  HELD
+  LOCKED
+  RELEASED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_ITEM
+}
+
+enum RewardTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PAYMENT
+  BOOKING
+}
+
+// ─────────────────────────────────────────────────────────
+// USERS & AUTH (NextAuth compatible)
+// ─────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  phone         String?
+  role          UserRole  @default(USER)
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  bookings      Booking[]
+  reviews       Review[]
+  wishlist      Wishlist[]
+  notifications Notification[]
+  reward        Reward?
+  rewardTx      RewardTransaction[]
+  seatLocks     SeatLock[]
+  auditLogs     AuditLog[]
+  favoriteMovies FavoriteMovie[]
+  favoriteBranches FavoriteBranch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+// Auth.js / NextAuth required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────
+// GEOGRAPHY
+// ─────────────────────────────────────────────────────────
+
+model City {
+  id       String   @id @default(cuid())
+  name     String   @unique
+  nameBn   String?  // Bangla name
+  branches Branch[]
+
+  @@index([name])
+}
+
+// ─────────────────────────────────────────────────────────
+// BRANCHES (Cinema Locations)
+// ─────────────────────────────────────────────────────────
+
+model Branch {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  address     String
+  cityId      String
+  lat         Float?
+  lng         Float?
+  phone       String?
+  email       String?
+  imageUrl    String?
+  description String? @db.Text
+  facilities  String[] // ["IMAX", "4DX", "VIP Lounge", "Parking", "Food Court"]
+  parking     Boolean @default(false)
+  isActive    Boolean @default(true)
+
+  city     City       @relation(fields: [cityId], references: [id])
+  halls    Hall[]
+  favorites FavoriteBranch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cityId])
+  @@index([slug])
+  @@index([isActive])
+}
+
+model Hall {
+  id          String  @id @default(cuid())
+  branchId    String
+  name        String  // "Screen 1", "IMAX Hall", "VIP Hall"
+  capacity    Int
+  facilities  String[] // ["IMAX", "Dolby Atmos", "4K"]
+  imageUrl    String?
+  isActive    Boolean @default(true)
+
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  seats     Seat[]
+  schedules Schedule[]
+
+  @@index([branchId])
+}
+
+model Seat {
+  id      String   @id @default(cuid())
+  hallId  String
+  row     String   // "A", "B", "C"
+  number  Int      // 1, 2, 3
+  type    SeatType @default(STANDARD)
+  isActive Boolean @default(true)
+
+  hall      Hall       @relation(fields: [hallId], references: [id])
+  tickets   Ticket[]
+  seatLocks SeatLock[]
+
+  @@unique([hallId, row, number])
+  @@index([hallId])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────────────────
+// MOVIES
+// ─────────────────────────────────────────────────────────
+
+model Movie {
+  id          String      @id @default(cuid())
+  title       String
+  titleBn     String?     // Bangla title
+  slug        String      @unique
+  synopsis    String      @db.Text
+  synopsisBn  String?     @db.Text
+  runtime     Int         // minutes
+  language    String      // "English", "Bangla", "Hindi"
+  subtitle    String[]    // ["Bangla", "English"]
+  genre       String[]    // ["Action", "Drama"]
+  posterUrl   String?
+  backdropUrl String?
+  trailerUrl  String?
+  rating      Float?      // Our platform rating 0-10
+  imdbRating  Float?      // IMDb rating
+  imdbId      String?
+  releaseDate DateTime
+  status      MovieStatus @default(UPCOMING)
+  isActive    Boolean     @default(true)
+  isFeatured  Boolean     @default(false)
+
+  cast      CastMember[]
+  schedules Schedule[]
+  reviews   Review[]
+  wishlists Wishlist[]
+  favorites FavoriteMovie[]
+  gallery   MovieGallery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@index([releaseDate])
+  @@index([isFeatured])
+}
+
+model CastMember {
+  id        String  @id @default(cuid())
+  movieId   String
+  name      String
+  role      String  // "Director", "Actor", "Producer"
+  character String? // Character name for actors
+  imageUrl  String?
+  order     Int     @default(0)
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+}
+
+model MovieGallery {
+  id       String @id @default(cuid())
+  movieId  String
+  imageUrl String
+  caption  String?
+  order    Int    @default(0)
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+}
+
+// ─────────────────────────────────────────────────────────
+// SCHEDULES (Showtimes)
+// ─────────────────────────────────────────────────────────
+
+model Schedule {
+  id          String         @id @default(cuid())
+  movieId     String
+  hallId      String
+  startTime   DateTime
+  endTime     DateTime
+  language    String         // "English", "Bangla", "Dubbed"
+  subtitle    String?        // "Bangla subtitles"
+  status      ScheduleStatus @default(AVAILABLE)
+
+  // Pricing tiers (per seat type)
+  priceStandard Decimal @db.Decimal(10, 2)
+  pricePremium  Decimal @db.Decimal(10, 2)
+  priceVip      Decimal @db.Decimal(10, 2)
+  priceCouple   Decimal @db.Decimal(10, 2)
+
+  movie     Movie      @relation(fields: [movieId], references: [id])
+  hall      Hall       @relation(fields: [hallId], references: [id])
+  bookings  Booking[]
+  seatLocks SeatLock[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([movieId, startTime])
+  @@index([hallId, startTime])
+  @@index([startTime, status])
+}
+
+// ─────────────────────────────────────────────────────────
+// SEAT LOCKING (Concurrency Control — 10-min holds)
+// ─────────────────────────────────────────────────────────
+
+model SeatLock {
+  id         String         @id @default(cuid())
+  seatId     String
+  scheduleId String
+  userId     String
+  status     SeatLockStatus @default(HELD)
+  expiresAt  DateTime
+
+  seat     Seat     @relation(fields: [seatId], references: [id])
+  schedule Schedule @relation(fields: [scheduleId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([seatId, scheduleId])
+  @@index([expiresAt])
+  @@index([userId])
+  @@index([scheduleId])
+}
+
+// ─────────────────────────────────────────────────────────
+// BOOKINGS
+// ─────────────────────────────────────────────────────────
+
+model Booking {
+  id          String        @id @default(cuid())
+  userId      String
+  scheduleId  String
+  status      BookingStatus @default(PENDING)
+  totalAmount Decimal       @db.Decimal(10, 2)
+  qrCode      String?       @unique
+  notes       String?
+
+  // Relations
+  user      User          @relation(fields: [userId], references: [id])
+  schedule  Schedule      @relation(fields: [scheduleId], references: [id])
+  payment   Payment?
+  tickets   Ticket[]
+  foodItems BookingFood[]
+  coupons   BookingCoupon[]
+
+  expiresAt DateTime  // 15 minutes to complete payment
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([scheduleId, status])
+  @@index([status])
+  @@index([qrCode])
+}
+
+model Ticket {
+  id        String  @id @default(cuid())
+  bookingId String
+  seatId    String
+  price     Decimal @db.Decimal(10, 2)
+  qrCode    String? @unique
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  seat    Seat    @relation(fields: [seatId], references: [id])
+
+  @@unique([seatId, bookingId])
+  @@index([bookingId])
+}
+
+// ─────────────────────────────────────────────────────────
+// PAYMENTS
+// ─────────────────────────────────────────────────────────
+
+model Payment {
+  id              String         @id @default(cuid())
+  bookingId       String         @unique
+  amount          Decimal        @db.Decimal(10, 2)
+  currency        String         @default("BDT")
+  status          PaymentStatus  @default(PENDING)
+  gateway         PaymentGateway
+  gatewayTranId   String?        @unique
+  gatewayValId    String?
+  gatewayResponse Json?
+  failureReason   String?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gatewayTranId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────
+// FOOD & BEVERAGES
+// ─────────────────────────────────────────────────────────
+
+model FoodItem {
+  id          String  @id @default(cuid())
+  name        String
+  nameBn      String?
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+  imageUrl    String?
+  category    String  // "Popcorn", "Drinks", "Snacks", "Combo"
+  isAvailable Boolean @default(true)
+  isVeg       Boolean @default(false)
+
+  bookings BookingFood[]
+
+  @@index([category])
+  @@index([isAvailable])
+}
+
+model BookingFood {
+  id         String @id @default(cuid())
+  bookingId  String
+  foodItemId String
+  quantity   Int
+  price      Decimal @db.Decimal(10, 2)
+
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id])
+
+  @@index([bookingId])
+}
+
+// ─────────────────────────────────────────────────────────
+// COUPONS
+// ─────────────────────────────────────────────────────────
+
+model Coupon {
+  id           String     @id @default(cuid())
+  code         String     @unique
+  description  String?
+  type         CouponType
+  discountValue Decimal   @db.Decimal(10, 2)
+  minAmount    Decimal?   @db.Decimal(10, 2)
+  maxDiscount  Decimal?   @db.Decimal(10, 2)
+  usageLimit   Int?
+  usedCount    Int        @default(0)
+  validFrom    DateTime
+  validTo      DateTime
+  isActive     Boolean    @default(true)
+  movieId      String?    // null = applies to all movies
+  branchId     String?    // null = applies to all branches
+
+  bookings BookingCoupon[]
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@index([isActive, validTo])
+}
+
+model BookingCoupon {
+  id         String  @id @default(cuid())
+  bookingId  String
+  couponId   String
+  discount   Decimal @db.Decimal(10, 2)
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  coupon  Coupon  @relation(fields: [couponId], references: [id])
+
+  @@unique([bookingId, couponId])
+}
+
+// ─────────────────────────────────────────────────────────
+// REVIEWS
+// ─────────────────────────────────────────────────────────
+
+model Review {
+  id       String       @id @default(cuid())
+  userId   String
+  movieId  String
+  rating   Int          // 1-10
+  title    String?
+  comment  String?      @db.Text
+  status   ReviewStatus @default(PENDING)
+  likes    Int          @default(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, movieId])
+  @@index([movieId, status])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────
+// WISHLIST & FAVORITES
+// ─────────────────────────────────────────────────────────
+
+model Wishlist {
+  id      String @id @default(cuid())
+  userId  String
+  movieId String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, movieId])
+  @@index([userId])
+}
+
+model FavoriteMovie {
+  id      String @id @default(cuid())
+  userId  String
+  movieId String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+}
+
+model FavoriteBranch {
+  id       String @id @default(cuid())
+  userId   String
+  branchId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+}
+
+// ─────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────
+
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  title  String
+  body   String
+  type   NotificationType
+  isRead Boolean          @default(false)
+  link   String?
+  data   Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────
+// REWARDS
+// ─────────────────────────────────────────────────────────
+
+model Reward {
+  id         String     @id @default(cuid())
+  userId     String     @unique
+  points     Int        @default(0)
+  totalEarned Int       @default(0)
+  tier       RewardTier @default(BRONZE)
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions RewardTransaction[]
+
+  updatedAt DateTime @updatedAt
+
+  @@index([tier])
+}
+
+model RewardTransaction {
+  id          String @id @default(cuid())
+  userId      String
+  rewardId    String
+  points      Int    // Positive = earned, Negative = spent
+  description String
+  bookingId   String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  reward Reward @relation(fields: [rewardId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([rewardId])
+}
+
+// ─────────────────────────────────────────────────────────
+// AUDIT LOGS
+// ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  action     AuditAction
+  entity     String      // "Movie", "Booking", "User"
+  entityId   String?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────
+// CMS / CONTENT
+// ─────────────────────────────────────────────────────────
+
+model HeroBanner {
+  id          String  @id @default(cuid())
+  title       String
+  subtitle    String?
+  imageUrl    String
+  mobileImageUrl String?
+  link        String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+}
+
+model Promotion {
+  id          String  @id @default(cuid())
+  title       String
+  description String? @db.Text
+  imageUrl    String?
+  link        String?
+  validFrom   DateTime
+  validTo     DateTime
+  isActive    Boolean @default(true)
+  couponId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([isActive, validTo])
+}

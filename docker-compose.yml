@@ -1,0 +1,87 @@
+version: "3.9"
+
+services:
+  # ─── Next.js Application ─────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cinehubbd_app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-cinehubbd_pass}@db:5432/cinehubbd
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-cinehubbd_pass}@db:5432/cinehubbd
+      REDIS_URL: redis://:${REDIS_PASSWORD:-cinehubbd_redis}@cache:6379
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET}
+      AUTH_FACEBOOK_ID: ${AUTH_FACEBOOK_ID}
+      AUTH_FACEBOOK_SECRET: ${AUTH_FACEBOOK_SECRET}
+      SSLCOMMERZ_STORE_ID: ${SSLCOMMERZ_STORE_ID}
+      SSLCOMMERZ_STORE_PASSWORD: ${SSLCOMMERZ_STORE_PASSWORD}
+      SSLCOMMERZ_IS_LIVE: ${SSLCOMMERZ_IS_LIVE:-false}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── PostgreSQL Database ──────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: cinehubbd_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cinehubbd_pass}
+      POSTGRES_DB: cinehubbd
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Remove in production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cinehubbd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── Redis Cache ──────────────────────────────────────────
+  cache:
+    image: redis:7-alpine
+    container_name: cinehubbd_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-cinehubbd_redis}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379" # Remove in production
+    restart: unless-stopped
+
+  # ─── Prisma Migrations (Run once) ────────────────────────
+  migrate:
+    build: .
+    container_name: cinehubbd_migrate
+    command: npx prisma migrate deploy
+    environment:
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-cinehubbd_pass}@db:5432/cinehubbd
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
