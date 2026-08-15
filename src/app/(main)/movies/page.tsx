@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { MoviesPageClient } from "./MoviesPageClient";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function MoviesPage() {
-  return <MoviesPageClient />;
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0B0B0E]" />}>
+      <MoviesPageClient />
+    </Suspense>
+  );
 }

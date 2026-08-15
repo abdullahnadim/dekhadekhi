@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -11,22 +10,18 @@ import {
   Clock,
   MapPin,
   Ticket,
-  Users,
-  Filter,
   Film,
+  RefreshCw,
+  Wifi,
+  Filter,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  MOCK_SCHEDULES,
-  MOCK_MOVIES,
-  MOCK_BRANCHES,
-  generateMockSeatMap,
-} from "@/services/data-providers/mock-data";
+import { useCinemaMovies, useCinemaShowtimes, type CinemaMovie } from "@/hooks/useCinemaData";
 
-// Build date range for the next 7 days
-function getDays(count = 7) {
-  const days = [];
+// ─── Helpers ──────────────────────────────────────────────
+
+function getDays(count = 7): Date[] {
+  const days: Date[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   for (let i = 0; i < count; i++) {
@@ -39,7 +34,7 @@ function getDays(count = 7) {
 
 const DAYS = getDays(7);
 
-function formatDay(date: Date) {
+function formatDay(date: Date): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (date.getTime() === today.getTime()) return "Today";
@@ -49,313 +44,401 @@ function formatDay(date: Date) {
   return date.toLocaleDateString("en-BD", { weekday: "short", day: "numeric" });
 }
 
-// Availability color coding
-function getAvailabilityColor(occupancy: number) {
-  if (occupancy > 0.8) return { text: "text-red-400", bg: "bg-red-950/40", label: "Filling Fast" };
-  if (occupancy > 0.5) return { text: "text-yellow-400", bg: "bg-yellow-950/40", label: "Available" };
-  return { text: "text-green-400", bg: "bg-green-950/40", label: "Available" };
+function toISODate(date: Date): string {
+  return date.toISOString().split("T")[0];
 }
+
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString("en-BD", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function getAvailabilityInfo(available: number, total: number) {
+  const ratio = available / total;
+  if (ratio < 0.15) return { text: "text-red-400", label: "Almost Full", dot: "bg-red-400" };
+  if (ratio < 0.4) return { text: "text-yellow-400", label: "Filling Fast", dot: "bg-yellow-400" };
+  return { text: "text-green-400", label: "Available", dot: "bg-green-400" };
+}
+
+// ─── Skeleton ─────────────────────────────────────────────
+
+function MoviePillSkeleton() {
+  return (
+    <div className="flex-shrink-0 w-28 rounded-xl bg-white/5 animate-pulse">
+      <div className="aspect-[2/3] rounded-t-xl bg-white/10" />
+      <div className="p-2">
+        <div className="h-3 bg-white/10 rounded w-3/4 mx-auto" />
+      </div>
+    </div>
+  );
+}
+
+function ShowtimeRowSkeleton() {
+  return (
+    <div className="rounded-2xl bg-white/5 p-5 animate-pulse">
+      <div className="flex gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white/10" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-white/10 rounded w-1/2" />
+          <div className="h-3 bg-white/5 rounded w-3/4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pricing Table ────────────────────────────────────────
+
+function PricingTable({ priceStandard, pricePremium, priceVip, priceCouple }: {
+  priceStandard: number;
+  pricePremium: number;
+  priceVip: number;
+  priceCouple: number;
+}) {
+  const tiers = [
+    { label: "Standard", price: priceStandard, color: "text-white/60" },
+    { label: "Premium", price: pricePremium, color: "text-[#7C3AED]" },
+    { label: "VIP", price: priceVip, color: "text-[#D6A84D]" },
+    { label: "Couple", price: priceCouple, color: "text-[#EC4899]" },
+  ];
+  return (
+    <div className="flex items-center gap-3 flex-wrap mt-2">
+      {tiers.map((t) => (
+        <div key={t.label} className="flex items-center gap-1">
+          <span className="text-white/30 text-[10px]">{t.label}</span>
+          <span className={`text-xs font-semibold ${t.color}`}>৳{t.price}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Showtimes Panel ──────────────────────────────────────
+
+function ShowtimesPanel({
+  movie,
+  date,
+  onClose,
+}: {
+  movie: CinemaMovie;
+  date: string;
+  onClose: () => void;
+}) {
+  const { data: showtimes, isLoading, isError, refetch } = useCinemaShowtimes(movie.id, date);
+
+  // Group by branch
+  const byBranch = useMemo(() => {
+    if (!showtimes) return [];
+    const map = new Map<string, typeof showtimes>();
+    for (const s of showtimes) {
+      const key = s.branch.name;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    }
+    return Array.from(map.entries()).map(([name, slots]) => ({ name, slots }));
+  }, [showtimes]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.25 }}
+      className="overflow-hidden"
+    >
+      <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 mt-2">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Ticket className="w-4 h-4 text-[#FF3B30]" />
+            <span className="text-white font-medium text-sm">Showtimes for {new Date(date).toLocaleDateString("en-BD", { weekday: "long", day: "numeric", month: "short" })}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/30 hover:text-white text-xs transition-colors"
+          >
+            Close ✕
+          </button>
+        </div>
+
+        {isLoading && (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => <ShowtimeRowSkeleton key={i} />)}
+          </div>
+        )}
+
+        {isError && (
+          <div className="text-center py-6">
+            <p className="text-white/40 text-sm mb-3">Failed to load showtimes</p>
+            <Button onClick={() => refetch()} variant="ghost" size="sm" className="text-white/50 gap-2">
+              <RefreshCw className="w-3 h-3" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {!isLoading && !isError && byBranch.length === 0 && (
+          <div className="text-center py-8">
+            <Clock className="w-8 h-8 text-white/10 mx-auto mb-2" />
+            <p className="text-white/40 text-sm">No shows scheduled for this date</p>
+            <p className="text-white/20 text-xs mt-1">Try selecting a different date</p>
+          </div>
+        )}
+
+        {!isLoading && !isError && byBranch.length > 0 && (
+          <div className="space-y-5">
+            {byBranch.map(({ name, slots }) => {
+              const avail = getAvailabilityInfo(slots[0].availableSeats, slots[0].totalSeats);
+              return (
+                <div key={name}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <MapPin className="w-3.5 h-3.5 text-white/30" />
+                    <span className="text-white/60 text-xs font-medium">{name}</span>
+                    <span className={`text-[10px] flex items-center gap-1 ${avail.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${avail.dot} inline-block`} />
+                      {avail.label}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {slots.map((s) => (
+                      <div key={s.id} className="flex flex-col">
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#FF3B30]/40 hover:bg-[#FF3B30]/5 transition-all cursor-default group">
+                          <Clock className="w-3.5 h-3.5 text-white/30 group-hover:text-[#FF3B30]/60" />
+                          <span className="text-white text-sm font-medium">
+                            {formatTime(s.startTime)}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-white/5 text-white/40">
+                            {s.hallType}
+                          </span>
+                        </div>
+                        <PricingTable
+                          priceStandard={s.priceStandard}
+                          pricePremium={s.pricePremium}
+                          priceVip={s.priceVip}
+                          priceCouple={s.priceCouple}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────
 
 export function ShowtimesPageClient() {
   const [selectedDay, setSelectedDay] = useState(0);
-  const [selectedMovieId, setSelectedMovieId] = useState<string>("all");
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("all");
-  const [showFilters, setShowFilters] = useState(false);
+  const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"running" | "upcoming">("running");
 
-  const selectedDate = DAYS[selectedDay];
+  const selectedDate = toISODate(DAYS[selectedDay]);
 
-  // Filter schedules for selected day
-  const todaySchedules = useMemo(() => {
-    const nextDay = new Date(selectedDate);
-    nextDay.setDate(selectedDate.getDate() + 1);
+  const { data: moviesData, isLoading: moviesLoading, isError: moviesError, refetch: refetchMovies, isFetching } = useCinemaMovies();
 
-    return MOCK_SCHEDULES.filter((s) => {
-      const d = new Date(s.startTime);
-      if (d < selectedDate || d >= nextDay) return false;
-      if (selectedMovieId !== "all" && s.movieId !== selectedMovieId) return false;
-      if (selectedLanguage !== "all" && s.language !== selectedLanguage) return false;
-      return true;
-    }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  }, [selectedDate, selectedMovieId, selectedBranchId, selectedLanguage]);
-
-  // Group by movie
-  const schedulesByMovie = useMemo(() => {
-    const map = new Map<string, typeof todaySchedules>();
-    todaySchedules.forEach((s) => {
-      const list = map.get(s.movieId) || [];
-      list.push(s);
-      map.set(s.movieId, list);
-    });
-    return map;
-  }, [todaySchedules]);
-
-  // Unique movies in today's schedule
-  const moviesInSchedule = useMemo(() => {
-    const ids = new Set(todaySchedules.map((s) => s.movieId));
-    return MOCK_MOVIES.filter((m) => ids.has(m.id));
-  }, [todaySchedules]);
-
-  const languages = useMemo(() => {
-    const langs = new Set(todaySchedules.map((s) => s.language));
-    return Array.from(langs);
-  }, [todaySchedules]);
+  const displayedMovies = useMemo(() => {
+    if (!moviesData) return [];
+    return statusFilter === "running" ? moviesData.running : moviesData.upcoming;
+  }, [moviesData, statusFilter]);
 
   return (
     <div className="min-h-screen bg-[#0B0B0E] pt-20">
-      {/* Header */}
-      <div className="border-b border-white/5 bg-[#0B0B0E]/90 backdrop-blur-xl sticky top-16 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Date Picker */}
-          <div className="py-4">
-            <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-hide">
+      {/* Hero Header */}
+      <div className="border-b border-white/5 bg-gradient-to-b from-[#0F0F12] to-[#0B0B0E]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="flex items-end justify-between mb-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-display font-bold text-white mb-1">
+                Showtimes
+              </h1>
+              <p className="text-white/40 text-sm">
+                Live schedules from Star Cineplex BD
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {!moviesLoading && !moviesError && (
+                <div className="flex items-center gap-1.5 text-[#2ECC71] text-xs">
+                  <Wifi className="w-3 h-3" />
+                  <span className="hidden sm:inline">Live data</span>
+                </div>
+              )}
               <button
-                onClick={() => setSelectedDay(Math.max(0, selectedDay - 1))}
-                className="flex-shrink-0 w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all"
-                disabled={selectedDay === 0}
+                onClick={() => refetchMovies()}
+                disabled={isFetching}
+                className="p-2 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/20 transition-all disabled:opacity-50"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
               </button>
+            </div>
+          </div>
+
+          {/* Date Selector */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedDay((d) => Math.max(0, d - 1))}
+              disabled={selectedDay === 0}
+              className="p-2 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/20 transition-all disabled:opacity-20"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
               {DAYS.map((day, i) => (
                 <button
                   key={i}
-                  onClick={() => setSelectedDay(i)}
-                  className={`flex-shrink-0 flex flex-col items-center px-4 py-2.5 rounded-xl transition-all ${
+                  onClick={() => { setSelectedDay(i); setSelectedMovieId(null); }}
+                  className={`flex-shrink-0 flex flex-col items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     selectedDay === i
                       ? "bg-[#FF3B30] text-white shadow-lg shadow-red-500/20"
                       : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"
                   }`}
                 >
-                  <span className="text-xs font-semibold">{formatDay(day)}</span>
-                  <span className="text-xs opacity-70">
-                    {day.toLocaleDateString("en-BD", { month: "short", day: "numeric" })}
+                  <span className="text-[10px] opacity-70 uppercase tracking-wide">
+                    {formatDay(day) === "Today" || formatDay(day) === "Tomorrow"
+                      ? ""
+                      : day.toLocaleDateString("en-BD", { weekday: "short" })}
                   </span>
+                  <span>{formatDay(day) === "Today" ? "Today" : formatDay(day) === "Tomorrow" ? "Tomorrow" : day.getDate()}</span>
                 </button>
               ))}
-              <button
-                onClick={() => setSelectedDay(Math.min(DAYS.length - 1, selectedDay + 1))}
-                className="flex-shrink-0 w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all"
-                disabled={selectedDay === DAYS.length - 1}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
-          </div>
 
-          {/* Filter Bar */}
-          <div className="flex items-center gap-3 pb-4 overflow-x-auto">
             <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border transition-all ${
-                showFilters
-                  ? "bg-[#FF3B30]/10 border-[#FF3B30]/30 text-[#FF3B30]"
-                  : "bg-white/5 border-white/10 text-white/50 hover:text-white"
-              }`}
+              onClick={() => setSelectedDay((d) => Math.min(DAYS.length - 1, d + 1))}
+              disabled={selectedDay === DAYS.length - 1}
+              className="p-2 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/20 transition-all disabled:opacity-20"
             >
-              <Filter className="w-3.5 h-3.5" />
-              Filters
+              <ChevronRight className="w-4 h-4" />
             </button>
-
-            {/* Movie Quick Filter */}
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <button
-                onClick={() => setSelectedMovieId("all")}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
-                  selectedMovieId === "all"
-                    ? "bg-white/15 text-white"
-                    : "bg-white/5 text-white/40 hover:text-white"
-                }`}
-              >
-                All Movies
-              </button>
-              {moviesInSchedule.map((movie) => (
-                <button
-                  key={movie.id}
-                  onClick={() => setSelectedMovieId(movie.id)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all truncate max-w-40 ${
-                    selectedMovieId === movie.id
-                      ? "bg-[#FF3B30] text-white"
-                      : "bg-white/5 text-white/40 hover:text-white"
-                  }`}
-                >
-                  {movie.title}
-                </button>
-              ))}
-            </div>
-
-            {/* Language Filter */}
-            {languages.length > 1 && (
-              <div className="flex items-center gap-1 border-l border-white/10 pl-3">
-                {["all", ...languages].map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setSelectedLanguage(lang)}
-                    className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                      selectedLanguage === lang
-                        ? "bg-[#D6A84D] text-black"
-                        : "bg-white/5 text-white/40 hover:text-white"
-                    }`}
-                  >
-                    {lang === "all" ? "All Lang" : lang}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Showtimes Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {schedulesByMovie.size === 0 ? (
-          <div className="text-center py-24">
-            <Film className="w-16 h-16 text-white/10 mx-auto mb-4" />
-            <h3 className="text-white/60 text-lg font-semibold mb-2">
-              No showtimes available
-            </h3>
-            <p className="text-white/30 text-sm">
-              Try a different date or remove filters
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {Array.from(schedulesByMovie.entries()).map(([movieId, schedules]) => {
-              const movie = MOCK_MOVIES.find((m) => m.id === movieId);
-              if (!movie) return null;
+        {/* Status Filter */}
+        <div className="flex items-center gap-2 mb-6">
+          <Filter className="w-4 h-4 text-white/20" />
+          {(["running", "upcoming"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => { setStatusFilter(s); setSelectedMovieId(null); }}
+              className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                statusFilter === s
+                  ? "bg-[#FF3B30] text-white"
+                  : "bg-white/5 text-white/50 hover:text-white"
+              }`}
+            >
+              {s === "running" ? "Now Showing" : "Upcoming"}
+            </button>
+          ))}
+          {moviesData && (
+            <span className="text-white/20 text-xs ml-2">
+              {displayedMovies.length} movies
+            </span>
+          )}
+        </div>
 
-              return (
-                <motion.div
-                  key={movieId}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl bg-[#151518] border border-white/5 overflow-hidden"
+        {/* Movie Horizontal Scroll */}
+        <div className="mb-8">
+          <h2 className="text-white/40 text-xs uppercase tracking-wider mb-4">
+            Select a Movie
+          </h2>
+
+          {moviesLoading && (
+            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+              {Array.from({ length: 6 }).map((_, i) => <MoviePillSkeleton key={i} />)}
+            </div>
+          )}
+
+          {moviesError && (
+            <div className="flex items-center gap-3 py-6 text-white/40">
+              <span className="text-sm">Failed to load movies</span>
+              <Button onClick={() => refetchMovies()} variant="ghost" size="sm" className="gap-2">
+                <RefreshCw className="w-3 h-3" /> Retry
+              </Button>
+            </div>
+          )}
+
+          {!moviesLoading && !moviesError && (
+            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+              {displayedMovies.map((movie) => (
+                <motion.button
+                  key={movie.id}
+                  onClick={() =>
+                    setSelectedMovieId((prev) => prev === movie.id ? null : movie.id)
+                  }
+                  whileTap={{ scale: 0.97 }}
+                  className={`flex-shrink-0 w-28 rounded-xl overflow-hidden border-2 transition-all ${
+                    selectedMovieId === movie.id
+                      ? "border-[#FF3B30] shadow-lg shadow-red-500/20"
+                      : "border-transparent hover:border-white/20"
+                  }`}
                 >
-                  {/* Movie Header */}
-                  <div className="flex items-start gap-4 p-5 border-b border-white/5">
-                    <div className="relative w-16 h-24 rounded-xl overflow-hidden flex-shrink-0">
+                  {/* Poster */}
+                  <div className="relative aspect-[2/3] bg-[#151518]">
+                    {movie.posterUrl ? (
                       <Image
-                        src={movie.posterUrl || "/placeholder.jpg"}
+                        src={movie.posterUrl}
                         alt={movie.title}
                         fill
                         className="object-cover"
-                        sizes="64px"
+                        sizes="112px"
                       />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <Link href={`/movies/${movie.slug}`}>
-                        <h2 className="text-white font-semibold text-lg hover:text-[#FF3B30] transition-colors line-clamp-1">
-                          {movie.title}
-                        </h2>
-                      </Link>
-                      {movie.titleBn && (
-                        <p className="text-[#D6A84D] text-sm mb-2">{movie.titleBn}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-white/40">
-                        <span>{movie.language}</span>
-                        {movie.runtime > 0 && (
-                          <>
-                            <span>·</span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m
-                            </span>
-                          </>
-                        )}
-                        {movie.genre.slice(0, 2).map((g) => (
-                          <span
-                            key={g}
-                            className="px-2 py-0.5 rounded-md bg-white/5"
-                          >
-                            {g}
-                          </span>
-                        ))}
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Film className="w-8 h-8 text-white/10" />
                       </div>
-                    </div>
+                    )}
+                    {/* Category badge */}
+                    <span className="absolute top-1.5 right-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-black/70 text-white">
+                      {movie._category}
+                    </span>
+                    {selectedMovieId === movie.id && (
+                      <div className="absolute inset-0 bg-[#FF3B30]/20" />
+                    )}
                   </div>
-
-                  {/* Showtimes Grid — all halls */}
-                  <div className="p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <MapPin className="w-4 h-4 text-[#FF3B30]" />
-                      <span className="text-white/60 text-sm font-medium">
-                        {MOCK_BRANCHES[0]?.name}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                      {schedules.map((schedule) => {
-                        // Generate seat availability for each schedule
-                        const seatMap = generateMockSeatMap("hall-1", schedule.id, 0.45);
-                        const totalSeats = seatMap.rows.reduce(
-                          (sum, row) => sum + row.seats.length,
-                          0
-                        );
-                        const occupiedSeats = seatMap.rows.reduce(
-                          (sum, row) =>
-                            sum +
-                            row.seats.filter((s) => s.status === "OCCUPIED").length,
-                          0
-                        );
-                        const occupancy = occupiedSeats / totalSeats;
-                        const availableCount = totalSeats - occupiedSeats;
-                        const avail = getAvailabilityColor(occupancy);
-
-                        return (
-                          <Link
-                            key={schedule.id}
-                            href={`/book/${schedule.id}/seats`}
-                          >
-                            <motion.div
-                              whileHover={{ scale: 1.02, y: -2 }}
-                              whileTap={{ scale: 0.98 }}
-                              className="relative group cursor-pointer"
-                            >
-                              <div className="px-4 py-3 rounded-xl border border-white/10 hover:border-[#FF3B30]/50 hover:bg-[#FF3B30]/5 transition-all min-w-[120px]">
-                                {/* Time */}
-                                <div className="text-white font-bold text-lg">
-                                  {new Date(schedule.startTime).toLocaleTimeString(
-                                    "en-BD",
-                                    { hour: "2-digit", minute: "2-digit" }
-                                  )}
-                                </div>
-
-                                {/* Language */}
-                                <div className="text-white/40 text-xs mt-0.5">
-                                  {schedule.language}
-                                  {schedule.subtitle && ` · ${schedule.subtitle}`}
-                                </div>
-
-                                {/* Price */}
-                                <div className="text-[#D6A84D] text-xs font-semibold mt-1">
-                                  ৳{schedule.priceStandard}+
-                                </div>
-
-                                {/* Availability Badge */}
-                                <div className={`flex items-center gap-1 mt-2 px-1.5 py-0.5 rounded-md ${avail.bg} w-fit`}>
-                                  <Users className={`w-2.5 h-2.5 ${avail.text}`} />
-                                  <span className={`text-[10px] font-medium ${avail.text}`}>
-                                    {availableCount} seats
-                                  </span>
-                                </div>
-
-                                {/* Hover Book Button */}
-                                <div className="absolute inset-0 bg-[#FF3B30]/90 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <div className="text-white text-center">
-                                    <Ticket className="w-5 h-5 mx-auto mb-1" />
-                                    <span className="text-xs font-bold">Book Now</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          </Link>
-                        );
-                      })}
-                    </div>
+                  <div className={`px-2 py-2 text-left transition-colors ${selectedMovieId === movie.id ? "bg-[#FF3B30]/10" : "bg-white/5"}`}>
+                    <p className="text-white text-[10px] font-medium leading-tight line-clamp-2">
+                      {movie.title}
+                    </p>
+                    <p className="text-white/30 text-[9px] mt-0.5">{movie.language}</p>
                   </div>
-                </motion.div>
-              );
-            })}
-          </div>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Showtimes Panel */}
+        <AnimatePresence mode="wait">
+          {selectedMovieId && (
+            <ShowtimesPanel
+              key={`${selectedMovieId}-${selectedDate}`}
+              movie={displayedMovies.find((m) => m.id === selectedMovieId)!}
+              date={selectedDate}
+              onClose={() => setSelectedMovieId(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Prompt if no movie selected */}
+        {!selectedMovieId && !moviesLoading && !moviesError && displayedMovies.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-16 text-white/20"
+          >
+            <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Select a movie above to see available showtimes</p>
+          </motion.div>
         )}
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -44,6 +44,7 @@ const navLinks = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -151,11 +152,7 @@ export function Navbar() {
 
                   {/* User Menu */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
-                      >
+                    <DropdownMenuTrigger className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
                         <Avatar className="w-7 h-7">
                           {session.user.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -174,7 +171,6 @@ export function Navbar() {
                           {session.user.name?.split(" ")[0] || "User"}
                         </span>
                         <ChevronDown className="w-3 h-3 text-white/40" />
-                      </motion.button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
@@ -184,34 +180,24 @@ export function Navbar() {
                         My Account
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator className="bg-white/10" />
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard" className="text-white/80 cursor-pointer">
-                          <User className="w-4 h-4 mr-2" /> Dashboard
-                        </Link>
+                      <DropdownMenuItem onClick={() => router.push("/dashboard")} className="text-white/80 cursor-pointer">
+                        <User className="w-4 h-4 mr-2" /> Dashboard
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard/bookings" className="text-white/80 cursor-pointer">
-                          <BookOpen className="w-4 h-4 mr-2" /> My Bookings
-                        </Link>
+                      <DropdownMenuItem onClick={() => router.push("/dashboard/bookings")} className="text-white/80 cursor-pointer">
+                        <BookOpen className="w-4 h-4 mr-2" /> My Bookings
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard/wishlist" className="text-white/80 cursor-pointer">
-                          <Heart className="w-4 h-4 mr-2" /> Wishlist
-                        </Link>
+                      <DropdownMenuItem onClick={() => router.push("/dashboard/wishlist")} className="text-white/80 cursor-pointer">
+                        <Heart className="w-4 h-4 mr-2" /> Wishlist
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard/rewards" className="text-white/80 cursor-pointer">
-                          <Trophy className="w-4 h-4 mr-2" /> Rewards
-                          <Badge className="ml-auto bg-[#D6A84D]/20 text-[#D6A84D] text-[10px]">
-                            Bronze
-                          </Badge>
-                        </Link>
+                      <DropdownMenuItem onClick={() => router.push("/dashboard/rewards")} className="text-white/80 cursor-pointer">
+                        <Trophy className="w-4 h-4 mr-2" /> Rewards
+                        <Badge className="ml-auto bg-[#D6A84D]/20 text-[#D6A84D] text-[10px]">
+                          Bronze
+                        </Badge>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-white/10" />
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard/profile" className="text-white/80 cursor-pointer">
-                          <Settings className="w-4 h-4 mr-2" /> Settings
-                        </Link>
+                      <DropdownMenuItem onClick={() => router.push("/dashboard/profile")} className="text-white/80 cursor-pointer">
+                        <Settings className="w-4 h-4 mr-2" /> Settings
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-white/10" />
                       <DropdownMenuItem

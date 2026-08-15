@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ChevronRight, ArrowLeft, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { SeatMap, SeatSelectionSummary } from "@/components/booking/SeatMap";
-import { generateMockSeatMap, MOCK_SCHEDULES, MOCK_MOVIES, MOCK_BRANCHES } from "@/services/data-providers/mock-data";
+import { useSeatMap } from "@/hooks/useCinemaData";
+import { MOCK_SCHEDULES, MOCK_MOVIES, MOCK_BRANCHES } from "@/services/data-providers/mock-data";
 import type { SelectedSeat, SeatWithStatus } from "@/types";
 
 interface SeatSelectionClientProps {
@@ -14,14 +14,26 @@ interface SeatSelectionClientProps {
 }
 
 export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
-  const router = useRouter();
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
 
-  const schedule = MOCK_SCHEDULES.find((s) => s.id === showId);
-  const movie = schedule ? MOCK_MOVIES.find((m) => m.id === schedule.movieId) : null;
-  const branch = MOCK_BRANCHES[0];
+  // Determine hall/movie info — support both Cineplex IDs (cineplex-sch-*) and mock IDs (sch-*)
+  const isCineplexShow = showId.startsWith("cineplex-sch-");
 
-  const seatMapData = generateMockSeatMap("hall-1", showId, 0.4);
+  // For mock schedules, look up from mock data
+  const mockSchedule = !isCineplexShow
+    ? MOCK_SCHEDULES.find((s) => s.id === showId)
+    : null;
+  const mockMovie = mockSchedule
+    ? MOCK_MOVIES.find((m) => m.id === mockSchedule.movieId)
+    : null;
+
+  // Determine hallId for seat map
+  const hallId = isCineplexShow
+    ? showId.split("-").slice(0, 5).join("-") // extract hall portion
+    : mockSchedule?.hallId || "hall-1";
+
+  // Fetch seat map via React Query (polls every 30s for live availability)
+  const { data: seatMapData, isLoading, isError, refetch } = useSeatMap(hallId, showId);
 
   const handleSeatToggle = useCallback(
     (seat: SeatWithStatus, price: number) => {
@@ -30,6 +42,7 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
         if (exists) {
           return prev.filter((s) => s.seatId !== seat.id);
         }
+        if (prev.length >= 8) return prev; // max 8 seats
         return [
           ...prev,
           {
@@ -45,13 +58,28 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
     []
   );
 
-  const handleContinue = () => {
-    if (selectedSeats.length === 0) return;
-    // In production: persist to Zustand store + create server-side seat lock
-    router.push(`/book/${showId}/food?seats=${selectedSeats.map((s) => s.seatId).join(",")}`);
+  // Determine display info
+  const movieTitle = isCineplexShow
+    ? "Movie" // For Cineplex shows, title comes from parent page context
+    : mockMovie?.title || "Movie";
+
+  const branchName = mockSchedule
+    ? MOCK_BRANCHES[0]?.name || "Cinema"
+    : "Star Cineplex";
+
+  const scheduleDate = mockSchedule
+    ? new Date(mockSchedule.startTime)
+    : new Date();
+
+  const prices = seatMapData?.prices || {
+    STANDARD: 350,
+    PREMIUM: 500,
+    VIP: 700,
+    COUPLE: 1200,
+    ACCESSIBLE: 350,
   };
 
-  if (!schedule || !movie) {
+  if (!isCineplexShow && !mockSchedule) {
     return (
       <div className="min-h-screen bg-[#0B0B0E] flex items-center justify-center">
         <div className="text-center">
@@ -65,15 +93,13 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
     );
   }
 
-  const scheduleDate = new Date(schedule.startTime);
-
   return (
     <div className="min-h-screen bg-[#0B0B0E] pt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-white/40 mb-8">
-          <Link href={`/movies/${movie.slug}`} className="hover:text-white transition-colors">
-            {movie.title}
+          <Link href="/movies" className="hover:text-white transition-colors">
+            Movies
           </Link>
           <ChevronRight className="w-4 h-4" />
           <span className="text-white">Select Seats</span>
@@ -125,16 +151,52 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
                 <h2 className="text-white font-semibold text-lg">
                   Choose Your Seats
                 </h2>
-                <span className="text-white/40 text-sm">
-                  {selectedSeats.length} / 8 seats selected
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-white/40 text-sm">
+                    {selectedSeats.length} / 8 selected
+                  </span>
+                  {/* Live refresh button */}
+                  <button
+                    onClick={() => refetch()}
+                    title="Refresh seat availability"
+                    className="p-1.5 rounded-lg border border-white/10 text-white/30 hover:text-white hover:border-white/20 transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <SeatMap
-                data={seatMapData}
-                selectedSeats={selectedSeats}
-                onSeatToggle={handleSeatToggle}
-                maxSeats={8}
-              />
+
+              {/* Loading state */}
+              {isLoading && (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <RefreshCw className="w-8 h-8 text-white/20 animate-spin" />
+                  <p className="text-white/40 text-sm">Loading seat map...</p>
+                </div>
+              )}
+
+              {/* Error state */}
+              {isError && (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <div className="text-3xl">🎭</div>
+                  <p className="text-white/40 text-sm">Failed to load seats</p>
+                  <button
+                    onClick={() => refetch()}
+                    className="text-[#FF3B30] text-sm hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {/* Seat Map */}
+              {!isLoading && !isError && seatMapData && (
+                <SeatMap
+                  data={seatMapData}
+                  selectedSeats={selectedSeats}
+                  onSeatToggle={handleSeatToggle}
+                  maxSeats={8}
+                />
+              )}
             </div>
           </motion.div>
 
@@ -146,10 +208,10 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
           >
             <SeatSelectionSummary
               selectedSeats={selectedSeats}
-              prices={seatMapData.prices}
+              prices={prices}
               scheduleInfo={{
-                movieTitle: movie.title,
-                branchName: branch?.name || "Cinema",
+                movieTitle,
+                branchName,
                 date: scheduleDate.toLocaleDateString("en-BD", {
                   weekday: "short",
                   day: "numeric",
@@ -161,7 +223,9 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
                 }),
                 hall: "Screen 1",
               }}
-              onContinue={handleContinue}
+              onContinue={() => {
+                // Seat view only — no booking in this milestone
+              }}
               onClearAll={() => setSelectedSeats([])}
             />
           </motion.div>
