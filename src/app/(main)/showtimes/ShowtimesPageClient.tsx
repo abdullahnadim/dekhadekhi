@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -205,15 +206,21 @@ function ShowtimesPanel({
                   <div className="flex flex-wrap gap-2">
                     {slots.map((s) => (
                       <div key={s.id} className="flex flex-col">
-                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#FF3B30]/40 hover:bg-[#FF3B30]/5 transition-all cursor-default group">
-                          <Clock className="w-3.5 h-3.5 text-white/30 group-hover:text-[#FF3B30]/60" />
+                        <Link
+                          href={`/book/${s.id}/seats`}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#FF3B30]/50 hover:bg-[#FF3B30]/8 active:scale-95 transition-all cursor-pointer group"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-white/30 group-hover:text-[#FF3B30]/70 transition-colors" />
                           <span className="text-white text-sm font-medium">
                             {formatTime(s.startTime)}
                           </span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-white/5 text-white/40">
                             {s.hallType}
                           </span>
-                        </div>
+                          <span className="text-[10px] text-[#FF3B30]/60 hidden group-hover:inline ml-1">
+                            View Seats →
+                          </span>
+                        </Link>
                         <PricingTable
                           priceStandard={s.priceStandard}
                           pricePremium={s.pricePremium}

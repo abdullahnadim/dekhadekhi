@@ -93,28 +93,24 @@ function cineplexShowtimesToSchedules(
   const schedules: ScheduleWithDetails[] = [];
 
   for (const location of showtimes) {
-    for (const slot of location.time) {
-      const [time, period] = slot.time.split(" ");
-      const [hours, minutes] = time.split(":").map(Number);
-      let h = hours;
-      if (period === "PM" && hours !== 12) h += 12;
-      if (period === "AM" && hours === 12) h = 0;
+    // New structure: location has show_time[] array of days, each with slot[]
+    const dayEntry = location.show_time.find((d) => d.raw_date === date);
+    if (!dayEntry) continue;
 
-      const startDate = new Date(date);
-      startDate.setHours(h, minutes || 0, 0, 0);
+    for (const slot of dayEntry.slot) {
+      // show_time is "2026-08-16 17:30:00"
+      const startDate = new Date(slot.show_time.replace(" ", "T") + "+06:00");
+      const endDate = new Date(startDate.getTime() + 2.5 * 60 * 60 * 1000);
 
-      const endDate = new Date(startDate);
-      endDate.setHours(endDate.getHours() + 2, 30, 0, 0); // approximate runtime
-
-      const scheduleId = `cineplex-sch-${location.location_id}-${movieId}-${date}-${h}${minutes || 0}`;
+      const scheduleId = `cineplex-sch-${slot.schedule_id}`;
 
       schedules.push({
         id: scheduleId,
         movieId: `cineplex-${movieId}`,
-        hallId: `cineplex-hall-${location.location_id}`,
+        hallId: `cineplex-hall-${slot.hall_id}`,
         startTime: startDate,
         endTime: endDate,
-        language: "English",
+        language: location.movie_detail.language || "English",
         subtitle: null,
         status: "AVAILABLE",
         priceStandard: 350,
@@ -129,7 +125,7 @@ function cineplexShowtimesToSchedules(
           synopsis: "",
           synopsisBn: null,
           runtime: 0,
-          language: "English",
+          language: location.movie_detail.language || "English",
           subtitle: [],
           genre: [],
           posterUrl: null,
@@ -146,18 +142,18 @@ function cineplexShowtimesToSchedules(
           updatedAt: new Date(),
         },
         hall: {
-          id: `cineplex-hall-${location.location_id}`,
-          branchId: `cineplex-branch-${location.location_id}`,
+          id: `cineplex-hall-${slot.hall_id}`,
+          branchId: `cineplex-branch-${location.id}`,
           name: slot.hall_type || "Main Hall",
           capacity: 200,
           facilities: [slot.hall_type || "2D"],
           imageUrl: null,
           isActive: true,
           branch: {
-            id: `cineplex-branch-${location.location_id}`,
-            name: location.location_name,
-            slug: `cineplex-${location.short_name?.toLowerCase() || location.location_id}`,
-            address: location.location_name,
+            id: `cineplex-branch-${location.id}`,
+            name: `Star Cineplex`,
+            slug: `cineplex-branch-${location.id}`,
+            address: `Star Cineplex`,
             cityId: "dhaka",
             lat: null,
             lng: null,
