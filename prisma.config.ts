@@ -7,6 +7,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? "",
+    // DATABASE_URL is only required for booking/user features.
+    // Movie browsing milestone works without a database.
+    url: process.env.DATABASE_URL ?? "postgresql://placeholder:placeholder@localhost:5432/cinehubbd",
   },
 });

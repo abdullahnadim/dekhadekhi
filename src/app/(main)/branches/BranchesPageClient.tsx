@@ -61,7 +61,7 @@ export function BranchesPageClient() {
   }, [branches, selectedCity, search]);
 
   return (
-    <div className="min-h-screen bg-[#0B0B0E] pt-20">
+    <div className="min-h-screen bg-[#0B0B0E] pt-16 lg:pt-20">
       {/* Header */}
       <section className="py-16 text-center">
         <motion.div

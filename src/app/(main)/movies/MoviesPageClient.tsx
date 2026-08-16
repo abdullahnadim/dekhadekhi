@@ -106,9 +106,9 @@ export function MoviesPageClient() {
     selectedCategory;
 
   return (
-    <div className="min-h-screen bg-[#0B0B0E] pt-20">
+    <div className="min-h-screen bg-[#0B0B0E] pt-16 lg:pt-20">
       {/* Header */}
-      <div className="border-b border-white/5 bg-[#0B0B0E]/80 backdrop-blur-xl sticky top-16 z-30">
+      <div className="border-b border-white/5 bg-[#0B0B0E]/80 backdrop-blur-xl sticky top-16 lg:top-20 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-3">
             {/* Search */}
