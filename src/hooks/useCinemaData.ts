@@ -72,19 +72,29 @@ async function fetchMovies(): Promise<{
   running: CinemaMovie[];
   upcoming: CinemaMovie[];
 }> {
-  const res = await fetch("/api/v1/cinema/movies", {
-    next: { revalidate: 300 },
-  });
+  const res = await fetch("/api/v1/cinema/movies");
   if (!res.ok) throw new Error(`Movies fetch failed: ${res.status}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.error || "Failed to fetch movies");
-  return json.data;
+
+  // Normalize — ensure genre is always string[], not a raw string
+  const normalize = (m: CinemaMovie): CinemaMovie => ({
+    ...m,
+    genre: Array.isArray(m.genre)
+      ? m.genre
+      : typeof m.genre === "string" && m.genre
+      ? (m.genre as string).split(/[,\s]+/).map((g) => g.trim()).filter(Boolean)
+      : [],
+  });
+
+  return {
+    running: (json.data.running ?? []).map(normalize),
+    upcoming: (json.data.upcoming ?? []).map(normalize),
+  };
 }
 
 async function fetchBranches(): Promise<CinemaBranch[]> {
-  const res = await fetch("/api/v1/cinema/branches", {
-    next: { revalidate: 3600 },
-  });
+  const res = await fetch("/api/v1/cinema/branches");
   if (!res.ok) throw new Error(`Branches fetch failed: ${res.status}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.error || "Failed to fetch branches");

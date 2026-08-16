@@ -64,7 +64,12 @@ export async function GET() {
       runtime: 0,
       language: m.language,
       subtitle: [],
-      genre: m.genre ? m.genre.split(",").map((g) => g.trim()) : [],
+      genre: m.genre
+        ? m.genre
+            .split(/[,\s]+/)  // handles "Action,Horror" or "Action Horror"
+            .map((g) => g.trim())
+            .filter(Boolean)
+        : [],
       posterUrl: m.img || null,
       backdropUrl: m.img || null,
       trailerUrl: m.video || null,
