@@ -159,9 +159,9 @@ function ShowtimesPanel({
           </div>
           <button
             onClick={onClose}
-            className="text-white/30 hover:text-white text-xs transition-colors"
+            className="text-white/30 hover:text-white text-xs transition-colors p-2 -mr-2 rounded-lg hover:bg-white/5 touch-manipulation"
           >
-            Close ✕
+            ✕
           </button>
         </div>
 

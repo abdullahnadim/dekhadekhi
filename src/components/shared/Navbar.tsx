@@ -210,7 +210,7 @@ export function Navbar() {
                   </DropdownMenu>
                 </>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2">
                   <Link href="/login">
                     <Button
                       variant="ghost"
@@ -233,7 +233,7 @@ export function Navbar() {
 
               {/* Mobile Menu Button */}
               <button
-                className="lg:hidden w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-white/70"
+                className="lg:hidden w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-all touch-manipulation"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Toggle mobile menu"
               >
@@ -279,6 +279,29 @@ export function Navbar() {
                     </Link>
                   </motion.div>
                 ))}
+
+                {/* Auth links for mobile (only when not authenticated) */}
+                {status !== "authenticated" && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: navLinks.length * 0.05 }}
+                    className="pt-3 border-t border-white/5 mt-3 flex flex-col gap-2"
+                  >
+                    <Link
+                      href="/login"
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition-all"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/register"
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-[#FF3B30] text-white hover:bg-[#E82018] transition-all"
+                    >
+                      Get Started — It&apos;s Free
+                    </Link>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           )}

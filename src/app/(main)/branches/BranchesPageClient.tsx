@@ -93,10 +93,10 @@ export function BranchesPageClient() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         {/* City Filter + Status */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 gap-y-2 flex-wrap">
             <button
               onClick={() => setSelectedCity("all")}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all touch-manipulation ${
                 selectedCity === "all"
                   ? "bg-[#FF3B30] text-white"
                   : "bg-white/5 text-white/50 hover:text-white"
@@ -108,7 +108,7 @@ export function BranchesPageClient() {
               <button
                 key={city.id}
                 onClick={() => setSelectedCity(city.id)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all touch-manipulation ${
                   selectedCity === city.id
                     ? "bg-[#FF3B30] text-white"
                     : "bg-white/5 text-white/50 hover:text-white"

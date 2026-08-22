@@ -110,7 +110,7 @@ export function MoviesPageClient() {
       {/* Header */}
       <div className="border-b border-white/5 bg-[#0B0B0E]/80 backdrop-blur-xl sticky top-16 lg:top-20 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {/* Search */}
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -131,7 +131,7 @@ export function MoviesPageClient() {
             </div>
 
             {/* Status Filters */}
-            <div className="hidden sm:flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
               {(
                 [
                   { value: "all", label: "All" },
@@ -142,7 +142,7 @@ export function MoviesPageClient() {
                 <button
                   key={f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-all touch-manipulation ${
                     statusFilter === f.value
                       ? "bg-[#FF3B30] text-white"
                       : "text-white/50 hover:text-white hover:bg-white/5"
@@ -224,7 +224,7 @@ export function MoviesPageClient() {
                   </div>
                 </div>
 
-                <div className="flex gap-8">
+                <div className="flex gap-4 flex-wrap">
                   {/* Language */}
                   <div>
                     <p className="text-white/40 text-xs uppercase tracking-wider mb-2">Language</p>

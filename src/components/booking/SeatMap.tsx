@@ -96,6 +96,7 @@ export function SeatMap({
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return;
+    e.preventDefault(); // prevent page scroll while panning seat map
     const touch = e.touches[0];
     setPanOffset({
       x: touch.clientX - dragStart.x,
@@ -103,16 +104,17 @@ export function SeatMap({
     });
   };
 
-  // Keyboard zoom
+  // Keyboard zoom — stable [] deps so listener is registered once
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "=" || e.key === "+") handleZoomIn();
-      if (e.key === "-") handleZoomOut();
-      if (e.key === "0") handleReset();
+      if (e.key === "=" || e.key === "+") setZoom((z) => Math.min(z + 0.2, 2.5));
+      if (e.key === "-") setZoom((z) => Math.max(z - 0.2, 0.5));
+      if (e.key === "0") { setZoom(1); setPanOffset({ x: 0, y: 0 }); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="select-none">
@@ -128,43 +130,42 @@ export function SeatMap({
       </div>
 
       {/* Zoom Controls */}
-      <div className="flex items-center justify-between mb-4 px-4">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between mb-4 px-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={handleZoomOut}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition-all"
+            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white/60 hover:text-white flex items-center justify-center transition-all touch-manipulation"
             aria-label="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={handleZoomIn}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition-all"
+            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white/60 hover:text-white flex items-center justify-center transition-all touch-manipulation"
             aria-label="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={handleReset}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition-all"
+            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white/60 hover:text-white flex items-center justify-center transition-all touch-manipulation"
             aria-label="Reset view"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
-          <span className="text-white/30 text-xs ml-2">
-            {Math.round(zoom * 100)}%
-          </span>
+          <span className="text-white/30 text-xs ml-1">{Math.round(zoom * 100)}%</span>
         </div>
         <div className="flex items-center gap-1.5 text-white/30 text-xs">
           <Info className="w-3.5 h-3.5" />
-          <span>Click to select · Drag to pan</span>
+          <span className="hidden sm:inline">Click · Drag to pan</span>
+          <span className="sm:hidden">Tap · Drag to pan</span>
         </div>
       </div>
 
       {/* Seat Grid */}
       <div
         className="overflow-hidden rounded-2xl bg-[#0B0B0E] border border-white/5 cursor-grab active:cursor-grabbing"
-        style={{ height: "380px" }}
+        style={{ height: "clamp(280px, 50vw, 460px)" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -320,112 +321,127 @@ export function SeatSelectionSummary({
   const grandTotal = total + convenienceFee;
 
   return (
-    <div className="sticky top-20 space-y-4">
-      {/* Show Info */}
-      <div className="p-4 rounded-2xl bg-[#151518] border border-white/5">
-        <p className="text-white font-semibold text-sm mb-1 truncate">
-          {scheduleInfo.movieTitle}
-        </p>
-        <p className="text-white/40 text-xs">{scheduleInfo.branchName}</p>
-        <div className="flex items-center gap-2 mt-2 text-xs text-white/50">
-          <span>{scheduleInfo.date}</span>
-          <span>·</span>
-          <span>{scheduleInfo.time}</span>
-          <span>·</span>
-          <span>{scheduleInfo.hall}</span>
+    <>
+      {/* Mobile floating bottom bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#151518]/95 backdrop-blur-xl border-t border-white/10 px-4 py-3 safe-area-inset-bottom">
+        <div className="flex items-center gap-3 max-w-lg mx-auto">
+          <div className="flex-1 min-w-0">
+            {selectedSeats.length === 0 ? (
+              <p className="text-white/40 text-sm">Select seats above</p>
+            ) : (
+              <>
+                <p className="text-white font-semibold text-sm">
+                  {selectedSeats.length} seat{selectedSeats.length > 1 ? "s" : ""} · <span className="text-[#D6A84D]">৳{grandTotal}</span>
+                </p>
+                <p className="text-white/30 text-xs truncate">
+                  {selectedSeats.map(s => `${s.row}${s.number}`).join(", ")}
+                </p>
+              </>
+            )}
+          </div>
+          <button
+            onClick={onContinue}
+            disabled={selectedSeats.length === 0}
+            className="flex-shrink-0 px-6 py-3 rounded-xl bg-[#FF3B30] hover:bg-[#E82018] active:bg-[#C41410] text-white font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation"
+          >
+            Continue
+          </button>
         </div>
       </div>
 
-      {/* Selected Seats */}
-      <div className="p-4 rounded-2xl bg-[#151518] border border-white/5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm">Selected Seats</h3>
-          {selectedSeats.length > 0 && (
-            <button
-              onClick={onClearAll}
-              className="text-[#FF3B30] text-xs hover:text-[#FF6961] transition-colors"
-            >
-              Clear All
-            </button>
-          )}
+      {/* Desktop sticky sidebar */}
+      <div className="hidden lg:block sticky top-20 space-y-4">
+        {/* Show Info */}
+        <div className="p-4 rounded-2xl bg-[#151518] border border-white/5">
+          <p className="text-white font-semibold text-sm mb-1 truncate">
+            {scheduleInfo.movieTitle}
+          </p>
+          <p className="text-white/40 text-xs">{scheduleInfo.branchName}</p>
+          <div className="flex items-center gap-2 mt-2 text-xs text-white/50 flex-wrap">
+            <span>{scheduleInfo.date}</span>
+            <span>·</span>
+            <span>{scheduleInfo.time}</span>
+            <span>·</span>
+            <span>{scheduleInfo.hall}</span>
+          </div>
         </div>
 
-        {selectedSeats.length === 0 ? (
-          <p className="text-white/30 text-sm text-center py-4">
-            No seats selected
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {selectedSeats.map((seat) => (
-              <div
-                key={seat.seatId}
-                className="flex items-center justify-between"
+        {/* Selected Seats */}
+        <div className="p-4 rounded-2xl bg-[#151518] border border-white/5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-semibold text-sm">Selected Seats</h3>
+            {selectedSeats.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="text-[#FF3B30] text-xs hover:text-[#FF6961] transition-colors py-1 px-2"
               >
-                <div className="flex items-center gap-2">
-                  <div
-                    className={cn(
+                Clear All
+              </button>
+            )}
+          </div>
+
+          {selectedSeats.length === 0 ? (
+            <p className="text-white/30 text-sm text-center py-4">
+              No seats selected
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {selectedSeats.map((seat) => (
+                <div key={seat.seatId} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
                       "w-5 h-4 rounded text-[8px] flex items-center justify-center",
                       seat.type === "STANDARD" && "bg-[#2D3748]",
                       seat.type === "PREMIUM" && "bg-[#4C1D95]",
                       seat.type === "VIP" && "bg-[#78350F]",
                       seat.type === "COUPLE" && "bg-[#831843]",
                       seat.type === "ACCESSIBLE" && "bg-[#064E3B]"
-                    )}
-                  />
-                  <span className="text-white/60 text-sm">
-                    {seat.row}{seat.number}
-                  </span>
-                  <span className="text-white/30 text-xs capitalize">
-                    ({seat.type.toLowerCase()})
-                  </span>
+                    )} />
+                    <span className="text-white/60 text-sm">{seat.row}{seat.number}</span>
+                    <span className="text-white/30 text-xs capitalize">({seat.type.toLowerCase()})</span>
+                  </div>
+                  <span className="text-white text-sm font-medium">৳{seat.price}</span>
                 </div>
-                <span className="text-white text-sm font-medium">
-                  ৳{seat.price}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Price Breakdown */}
+        {selectedSeats.length > 0 && (
+          <div className="p-4 rounded-2xl bg-[#151518] border border-white/5 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">Tickets ({selectedSeats.length})</span>
+              <span className="text-white">৳{total}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">Convenience Fee (2%)</span>
+              <span className="text-white">৳{convenienceFee}</span>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-white/10">
+              <span className="text-white font-semibold">Total</span>
+              <span className="text-[#D6A84D] font-bold text-lg">৳{grandTotal}</span>
+            </div>
           </div>
         )}
+
+        {/* Continue Button */}
+        <Button
+          onClick={onContinue}
+          disabled={selectedSeats.length === 0}
+          className="w-full bg-[#FF3B30] hover:bg-[#E82018] text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl py-6 text-base font-semibold shadow-xl shadow-red-500/20"
+        >
+          <Ticket className="w-5 h-5 mr-2" />
+          {selectedSeats.length === 0
+            ? "Select Seats to Continue"
+            : `Continue with ${selectedSeats.length} seat${selectedSeats.length > 1 ? "s" : ""}`}
+        </Button>
+
+        <p className="text-center text-white/20 text-xs">
+          Seats are held for 10 minutes after selection
+        </p>
       </div>
-
-      {/* Price Breakdown */}
-      {selectedSeats.length > 0 && (
-        <div className="p-4 rounded-2xl bg-[#151518] border border-white/5 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-white/50">
-              Tickets ({selectedSeats.length})
-            </span>
-            <span className="text-white">৳{total}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-white/50">Convenience Fee (2%)</span>
-            <span className="text-white">৳{convenienceFee}</span>
-          </div>
-          <div className="flex justify-between pt-2 border-t border-white/10">
-            <span className="text-white font-semibold">Total</span>
-            <span className="text-[#D6A84D] font-bold text-lg">
-              ৳{grandTotal}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Continue Button */}
-      <Button
-        onClick={onContinue}
-        disabled={selectedSeats.length === 0}
-        className="w-full bg-[#FF3B30] hover:bg-[#E82018] text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl py-6 text-base font-semibold shadow-xl shadow-red-500/20"
-      >
-        <Ticket className="w-5 h-5 mr-2" />
-        {selectedSeats.length === 0
-          ? "Select Seats to Continue"
-          : `Continue with ${selectedSeats.length} seat${selectedSeats.length > 1 ? "s" : ""}`}
-      </Button>
-
-      <p className="text-center text-white/20 text-xs">
-        Seats are held for 10 minutes after selection
-      </p>
-    </div>
+    </>
   );
 }
 
