@@ -87,7 +87,7 @@ export function SeatSelectionClient({ showId }: SeatSelectionClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0B0E] pt-16 lg:pt-20 pb-24 lg:pb-0">
+    <div className="min-h-screen bg-[#0B0B0E] pb-24 lg:pb-0">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Back Nav */}

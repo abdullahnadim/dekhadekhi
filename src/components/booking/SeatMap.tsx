@@ -350,7 +350,7 @@ export function SeatSelectionSummary({
       </div>
 
       {/* Desktop sticky sidebar */}
-      <div className="hidden lg:block sticky top-20 space-y-4">
+      <div className="hidden lg:block sticky top-0 space-y-4">
         {/* Show Info */}
         <div className="p-4 rounded-2xl bg-[#151518] border border-white/5">
           <p className="text-white font-semibold text-sm mb-1 truncate">
